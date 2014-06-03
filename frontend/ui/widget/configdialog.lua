@@ -346,7 +346,6 @@ function ConfigOption:init()
                 table.insert(option_items_group, switch)
 --nico
   				if not Device:isTouchDevice() then
-		      	  switch.items = self.items
 				  function switch:onSelect()
 				    self.config:onConfigChoose(self.values, self.name,
 				  			self.event, self.args, self.events, self.position)
