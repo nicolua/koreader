@@ -39,8 +39,8 @@ function MenuBarItem:init()
             },
         }
     else
-        self.active_key_events = {
-            Select = { {"Press"}, doc = _("chose selected item") },
+        self.key_events = {
+            Select = { {"Press"}, doc = _("chose selected item"),is_inactive = true },
         }
     end
 end
@@ -81,8 +81,8 @@ function OptionTextItem:init()
             },
         }
     else
-        self.active_key_events = {
-            Select = { {"Press"}, doc = _("chose selected item") },
+        self.key_events = {
+            Select = { {"Press"}, doc = _("chose selected item"),is_inactive = true },
         }
     end
 end
@@ -116,6 +116,10 @@ function OptionIconItem:init()
                 doc = _("Select Option Item"),
             },
         }
+    else
+        self.key_events = {
+            Select = { {"Press"}, doc = _("chose selected item"),is_inactive=true },
+        }
     end
 end
 
@@ -142,6 +146,9 @@ function ConfigOption:init()
     table.insert(vertical_group, VerticalSpan:new{
         width = Screen:scaleByDPI(default_option_padding),
     })
+
+    self.items = {}  
+
     for c = 1, #self.options do
         if self.options[c].show ~= false then
             local name_align = self.options[c].name_align_right and self.options[c].name_align_right or 0.33
@@ -277,11 +284,15 @@ function ConfigOption:init()
                     option_item.event = self.options[c].event
                     option_item.current_item = d
                     option_item.config = self.config
+
+                    table.insert(self.items,option_item)
+
                     table.insert(option_items_group, option_item)
                     if d ~= #self.options[c].item_text then
                         table.insert(option_items_group, items_spacing)
                     end
                 end
+                self.items.active = self.items.active or current_item
             end
 
             if self.options[c].item_icons then
@@ -307,11 +318,15 @@ function ConfigOption:init()
                     option_item.event = self.options[c].event
                     option_item.current_item = d
                     option_item.config = self.config
+
+                    table.insert(self.items,option_item)
+
                     table.insert(option_items_group, option_item)
                     if d ~= #self.options[c].item_icons then
                         table.insert(option_items_group, items_spacing)
                     end
                 end
+                self.items.active = self.items.active or current_item
             end
 
             if self.options[c].toggle then
@@ -329,11 +344,29 @@ function ConfigOption:init()
                 local position = current_item
                 switch:setPosition(position)
                 table.insert(option_items_group, switch)
+--nico
+  				if not Device:isTouchDevice() then
+		      	  switch.items = self.items
+				  function switch:onSelect()
+				    self.config:onConfigChoose(self.values, self.name,
+				  			self.event, self.args, self.events, self.position)
+				    return true
+				  end
+      			  switch.key_events = {
+        			  Select = { {"Press"}, doc = _("chose selected item"),is_inactive=true },
+      			  }
+		      	  table.insert(self.items,switch)
+		      	end
+
             end
 
             table.insert(option_items_container, option_items_group)
             table.insert(horizontal_group, option_items_container)
             table.insert(vertical_group, horizontal_group)
+
+            self.items.active = self.items.active or 1
+            if self.items.active == 1 and self.items[1].toggle then self.items[1][1].color = 15 end
+
         end -- if
     end -- for
     table.insert(vertical_group, VerticalSpan:new{ width = default_option_padding })
@@ -374,6 +407,8 @@ function MenuBar:init()
             config = self.config_dialog,
         }
     end
+--nico
+    self.items=menu_items
 
     local spacing = HorizontalSpan:new{
         width = (Screen:getWidth() - icons_width) / (#menu_items+1)
@@ -440,10 +475,14 @@ function ConfigDialog:init()
     else
         -- set up keyboard events
         self.key_events.Close = { {"Back"}, doc = _("close config menu") }
-        -- we won't catch presses to "Right"
-        self.key_events.FocusRight = nil
+--nico
+        self.key_events.FocusRight = { {"Right"}, doc = _("right"),event = "FocusMove",args=1}
+        self.key_events.FocusLeft =  { {"Left"}, doc = _("left"),event = "FocusMove",args=-1}
+        self.key_events.FocusUp =    { {"Up"}, doc = _("up")}
+        self.key_events.FocusDown =  { {"Down"}, doc = _("down")}
+
     end
-    self.key_events.Select = { {"Press"}, doc = _("select current menu item") }
+--    self.key_events.Select = { {"Press"}, doc = _("select current menu item") }
 end
 
 function ConfigDialog:updateConfigPanel(index)
@@ -528,5 +567,64 @@ function ConfigDialog:onTapCloseMenu(arg, ges_ev)
         return true
     end
 end
+
+--nico menu on k3 
+function ConfigDialog:onClose()
+  self:closeDialog()
+  return true
+end
+--menubar
+function MenuBarItem:onSelect(idx)
+  UIManager:scheduleIn(0.0, function() self:invert(true) end)
+  UIManager:scheduleIn(0.1, function()
+      UIManager:sendEvent(Event:new("ShowConfigPanel", idx or index))
+  end)
+  UIManager:scheduleIn(0.5, function() self:invert(false) end)
+  return true
+end
+
+function ConfigDialog:onFocusMove(dir)
+  local index = self.panel_index + dir 
+  self.panel_index = index > #self.config_options and 1 or index < 1 and #self.config_options or index
+  self.config_menubar.items[self.panel_index]:onSelect(self.panel_index)
+  return true
+end
+
+--config panel
+function ConfigDialog:onFocusDown()
+  local items = self.config_panel[1].items
+  if not items then return end
+  items.active = items.active <= #items and items.active or 1
+  local item = items[items.active]
+  item.key_events.Select.is_inactive = true
+  item[1].color = item.toggle and 8 or 0
+  local active = items.active + 1 > #items and 1 or items.active + 1
+  items.active = active
+  items[active][1].color = 15
+  items[active].key_events.Select.is_inactive = false
+  UIManager:setDirty(items[active].config, "partial")
+  return true
+end
+
+function ConfigDialog:onFocusUp()
+  local items = self.config_panel[1].items
+  local item = items[items.active]
+  if not item or not item.position then return end
+  item:setPosition(item.position + 1 <= #item.toggle and item.position + 1 or 1)
+  item.key_events.Select.is_inactive = false
+  UIManager:setDirty(item.config, "partial")
+  return true
+end
+
+function OptionTextItem:onSelect()
+  self.config:onConfigChoose(self.values, self.name, self.event, self.args, self.events, self.current_item)
+  return true
+end
+
+function OptionIconItem:onSelect()
+  self.config:onConfigChoose(self.values, self.name, self.event, self.args, self.events, self.current_item)
+  return true
+end
+
 
 return ConfigDialog

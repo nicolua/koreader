@@ -10,6 +10,7 @@ local Screen = require("ui/screen")
 local Language = require("ui/language")
 local _ = require("gettext")
 local ReaderFrontLight = require("apps/reader/modules/readerfrontlight")
+local Menu = require("ui/widget/menu")
 
 local FileManagerMenu = InputContainer:extend{
     tab_item_table = nil,
